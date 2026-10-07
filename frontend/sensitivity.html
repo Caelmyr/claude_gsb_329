@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>敏感性分析 · 复杂系统模拟仿真平台</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="topnav" id="topnav"></nav>
+  <main class="container">
+    <h1 class="page-title">参数敏感性分析</h1>
+    <p class="page-sub">在取值区间内自动扫描参数、逐组完整运行并汇总敏感性曲线 / 热力图 —— 一眼看出哪些参数真正影响结果，哪些基本无关。</p>
+
+    <div class="card">
+      <h2>新建敏感性扫描</h2>
+      <div class="grid grid-2">
+        <div class="field"><label>扫描名称</label><input id="swName" placeholder="例如：β 与初始免疫比例敏感性"></div>
+        <div class="field"><label>基础场景</label><select id="swScene"></select></div>
+      </div>
+
+      <h3>扫描参数 <span class="muted small" id="modeHint"></span></h3>
+      <div id="paramRows"></div>
+      <button class="btn small" id="addParam">+ 添加扫描参数</button>
+
+      <div class="field" id="modeRow" style="display:none;margin-top:12px">
+        <label>扫描方式</label>
+        <div class="row gap-6">
+          <label class="check"><input type="radio" name="swMode" value="grid" checked> 网格扫描（热力图，组数 = 两参数取值数相乘）</label>
+          <label class="check"><input type="radio" name="swMode" value="oat"> 逐参数扫描（OAT，组数 ≈ 取值数相加，适合快速筛选）</label>
+        </div>
+      </div>
+
+      <div class="grid grid-4" style="margin-top:14px">
+        <div class="field"><label>每组运行步数</label><input id="swSteps" type="number" value="200" min="1" max="5000"></div>
+        <div class="field"><label>重复次数（不同种子）</label><input id="swReps" type="number" value="1" min="1" max="10"></div>
+        <div class="field"><label>随机种子</label><input id="swSeed" type="number" value="0"></div>
+        <div class="field"><label>预计规模</label><div class="pill" id="swEstimate" style="padding:8px 0">—</div></div>
+      </div>
+
+      <div class="field"><label>关键指标（用于曲线 / 热力图 / 敏感性排序）</label><div id="metricChecks" class="row gap-6"></div></div>
+
+      <div class="row" style="margin-top:6px">
+        <button class="btn primary" id="createSweep">开始扫描</button>
+        <span class="muted small" id="swStatus"></span>
+      </div>
+      <p class="muted small" style="margin:10px 0 0">说明：扫描在后台逐组运行，每组是一个完整运行（可在运行详情中查看）；不同取值的运行步数与耗时可能不同，页面会实时显示进度与预计剩余时间；个别取值失败不会中断扫描，会在结果中单独标出。扫描不应用场景中预定的干预措施。</p>
+    </div>
+
+    <div class="card">
+      <h2>扫描列表</h2>
+      <div id="sweepList"></div>
+    </div>
+
+    <div class="card" id="detailCard" style="display:none">
+      <div class="row between">
+        <h2 id="dTitle" style="margin:0"></h2>
+        <div class="row gap-6">
+          <label class="muted small">指标</label><select id="dMetric" style="width:170px"></select>
+          <label class="muted small">汇总</label>
+          <select id="dAgg" style="width:110px">
+            <option value="final">终值</option>
+            <option value="peak">峰值</option>
+            <option value="mean">均值</option>
+          </select>
+          <button class="btn danger small" id="stopSweep" style="display:none">停止扫描</button>
+        </div>
+      </div>
+
+      <div class="row gap-6" id="dChips" style="margin:10px 0"></div>
+      <div class="progress" id="dProgress" style="display:none"><div class="bar"></div></div>
+      <div class="muted small" id="dEta" style="margin-top:6px"></div>
+      <div id="dFailed"></div>
+
+      <div id="dRankCard" style="display:none;margin-top:14px">
+        <h3>参数敏感性排序（归一化影响幅度，越大越敏感）</h3>
+        <div class="chart" id="rankChart" style="height:230px"></div>
+        <div class="muted small" id="rankNote"></div>
+      </div>
+
+      <div id="dCharts" style="margin-top:14px"></div>
+
+      <h3 style="margin-top:16px">运行明细</h3>
+      <div style="max-height:340px;overflow:auto">
+        <table id="dTable"></table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/vendor/echarts.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/common.js"></script>
+  <script src="/js/sensitivity.js"></script>
+</body>
+</html>

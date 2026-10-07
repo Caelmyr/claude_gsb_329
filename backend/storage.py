@@ -11,6 +11,7 @@ Layout (all under :data:`DATA_DIR`)::
           steps/<nnnnnnnn>.json     # full per-step snapshot (individuals + grid)
           report.json               # generated report
       experiments/<exp_id>.json     # comparison experiments (param groups)
+      sweeps/<sweep_id>.json        # parameter sensitivity sweeps
       exports/                      # exported CSV / JSON files
 
 Every write goes through :func:`atomic_write_json`: serialise, write to a temp
@@ -34,7 +35,7 @@ from typing import Any, Dict, List, Optional
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 
-_DIRS = ("scenes", "runs", "experiments", "reports", "exports")
+_DIRS = ("scenes", "runs", "experiments", "sweeps", "reports", "exports")
 
 
 def ensure_dirs() -> None:
@@ -286,6 +287,41 @@ def list_experiments() -> List[Dict[str, Any]]:
         if exp:
             out.append(exp)
     out.sort(key=lambda e: e.get("created_at", ""), reverse=True)
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# Sweeps (parameter sensitivity analysis)
+# --------------------------------------------------------------------------- #
+def sweeps_dir() -> str:
+    return os.path.join(DATA_DIR, "sweeps")
+
+
+def sweep_path(sweep_id: str) -> str:
+    return os.path.join(sweeps_dir(), f"{sweep_id}.json")
+
+
+def save_sweep(sweep: Dict[str, Any]) -> None:
+    atomic_write_json(sweep_path(sweep["id"]), sweep)
+
+
+def load_sweep(sweep_id: str) -> Optional[Dict[str, Any]]:
+    return read_json(sweep_path(sweep_id))
+
+
+def delete_sweep(sweep_id: str) -> bool:
+    return delete_file(sweep_path(sweep_id))
+
+
+def list_sweeps() -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for name in os.listdir(sweeps_dir()):
+        if not name.endswith(".json"):
+            continue
+        sweep = read_json(os.path.join(sweeps_dir(), name))
+        if sweep:
+            out.append(sweep)
+    out.sort(key=lambda s: s.get("created_at", ""), reverse=True)
     return out
 
 

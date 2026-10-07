@@ -231,6 +231,11 @@ class RunManager:
                 self._abort.discard(run_id)
             return storage.delete_run(run_id)
 
+    def unload(self, run_id: str) -> None:
+        """Drop the in-memory engine; the run's files stay on disk."""
+        with self._lock:
+            self._engines.pop(run_id, None)
+
     # ------------------------------------------------------------------ #
     # Interventions
     # ------------------------------------------------------------------ #

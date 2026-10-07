@@ -1,6 +1,6 @@
 /* History: browse scenes / runs / experiments with cross-page links. */
 
-let hist = { scenes: [], runs: [], experiments: [] };
+let hist = { scenes: [], runs: [], experiments: [], sweeps: [] };
 let tab = "scenes";
 
 function renderScenes() {
@@ -48,8 +48,22 @@ function renderExperiments() {
     </div>`).join("") || '<p class="muted">暂无实验。</p>';
 }
 
+function renderSweeps() {
+  return (hist.sweeps || []).map((s) => `
+    <div class="list-item">
+      <div style="min-width:0">
+        <div class="t">${esc(s.name)} ${statusBadge(s.status)}</div>
+        <div class="s">${s.params.map((p) => esc(p.label)).join(" × ")} · ${s.done}/${s.total} 组${s.failed ? ` · 失败 ${s.failed} 组` : ""} · ${esc(s.created_at)}</div>
+      </div>
+      <div class="row gap-6">
+        <a class="btn small" href="/sensitivity.html?sweep=${esc(s.id)}">查看结果</a>
+        <button class="btn danger small del" data-kind="sweeps" data-id="${esc(s.id)}">删除</button>
+      </div>
+    </div>`).join("") || '<p class="muted">暂无敏感性扫描。</p>';
+}
+
 function render() {
-  const body = { scenes: renderScenes, runs: renderRuns, experiments: renderExperiments }[tab];
+  const body = { scenes: renderScenes, runs: renderRuns, experiments: renderExperiments, sweeps: renderSweeps }[tab];
   el("list").innerHTML = body();
   el("list").querySelectorAll(".del").forEach((b) => {
     b.onclick = async () => {

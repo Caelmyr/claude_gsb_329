@@ -226,5 +226,28 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
 
 .pill { font-family: var(--mono); font-size: 12px; color: var(--accent-2); }
 
+/* progress bar (sweep / batch progress) */
+.progress {
+  height: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress .bar { height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+
+/* summary chips */
+.chip {
+  display: inline-block;
+  padding: 3px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.chip.good { color: var(--green); border-color: #1f4d33; }
+.chip.bad { color: var(--red); border-color: #5b2a2a; }
+
 /* timeline slider */
 .timeline { width: 100%; margin: 12px 0; accent-color: var(--accent); }

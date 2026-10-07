@@ -14,7 +14,7 @@ from typing import Any, Dict
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
-from . import catalog, export, models, report, storage, util
+from . import catalog, export, models, report, storage, sweep, util
 from .run_manager import manager
 
 FRONTEND_DIR = os.path.join(
@@ -307,6 +307,54 @@ def create_app() -> Flask:
         return jsonify({"deleted": exp_id})
 
     # ------------------------------------------------------------------ #
+    # Sweeps (parameter sensitivity analysis)
+    # ------------------------------------------------------------------ #
+    def _sweep_public(sw: Dict[str, Any]) -> Dict[str, Any]:
+        """Sweep dict without the (potentially long) points array."""
+        return {k: v for k, v in sw.items() if k != "points"}
+
+    @app.route("/api/sweeps", methods=["GET"])
+    def list_sweeps():
+        return jsonify({"sweeps": [_sweep_public(sweep.refresh_status(s))
+                                   for s in storage.list_sweeps()]})
+
+    @app.route("/api/sweeps", methods=["POST"])
+    def create_sweep():
+        data = _json()
+        scene = storage.load_scene(data.get("scene_id", ""))
+        if scene is None:
+            return _err(KeyError(f"scene not found: {data.get('scene_id')}"), 404)
+        try:
+            sw = sweep.create_sweep(scene, data)
+        except (ValueError, TypeError) as exc:
+            return _err(exc, 400)
+        storage.save_sweep(sw)
+        sweep.start_sweep(sw["id"])
+        return jsonify(_sweep_public(sw)), 201
+
+    @app.route("/api/sweeps/<sweep_id>", methods=["GET"])
+    def get_sweep(sweep_id: str):
+        sw = storage.load_sweep(sweep_id)
+        if sw is None:
+            return _err(KeyError(f"sweep not found: {sweep_id}"), 404)
+        sw = sweep.refresh_status(sw)
+        return jsonify({**sw, "analysis": sweep.analyze(sw)})
+
+    @app.route("/api/sweeps/<sweep_id>/stop", methods=["POST"])
+    def stop_sweep(sweep_id: str):
+        if storage.load_sweep(sweep_id) is None:
+            return _err(KeyError(f"sweep not found: {sweep_id}"), 404)
+        sweep.stop_sweep(sweep_id)
+        return jsonify({"stopping": sweep_id})
+
+    @app.route("/api/sweeps/<sweep_id>", methods=["DELETE"])
+    def delete_sweep(sweep_id: str):
+        keep_runs = request.args.get("keep_runs") == "1"
+        if not sweep.delete_sweep(sweep_id, keep_runs=keep_runs):
+            return _err(KeyError(f"sweep not found: {sweep_id}"), 404)
+        return jsonify({"deleted": sweep_id})
+
+    # ------------------------------------------------------------------ #
     # Reports
     # ------------------------------------------------------------------ #
     @app.route("/api/reports/<run_id>", methods=["GET"])
@@ -344,7 +392,7 @@ def create_app() -> Flask:
         return send_file(path, as_attachment=True, download_name=name)
 
     # ------------------------------------------------------------------ #
-    # History (scenes + runs + experiments in one view)
+    # History (scenes + runs + experiments + sweeps in one view)
     # ------------------------------------------------------------------ #
     @app.route("/api/history")
     def history():
@@ -352,6 +400,7 @@ def create_app() -> Flask:
             "scenes": storage.list_scenes(),
             "runs": storage.list_runs(),
             "experiments": storage.list_experiments(),
+            "sweeps": [_sweep_public(s) for s in storage.list_sweeps()],
         })
 
     return app
