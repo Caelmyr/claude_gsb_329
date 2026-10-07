@@ -9,6 +9,7 @@ const PAGES = [
   { file: "intervention.html", label: "干预措施" },
   { file: "replay.html", label: "回放与时间轴" },
   { file: "compare.html", label: "对比实验" },
+  { file: "sensitivity.html", label: "参数敏感性" },
   { file: "report.html", label: "报告生成" },
   { file: "export.html", label: "数据导出" },
   { file: "history.html", label: "历史场景" },
@@ -41,12 +42,15 @@ async function fillSceneSelect(sel, { includePlaceholder = true } = {}) {
   return scenes;
 }
 
-/* Populate a <select> with runs, newest first. */
-async function fillRunSelect(sel, { includePlaceholder = true } = {}) {
+/* Populate a <select> with runs, newest first.
+   Runs produced by sensitivity sweeps are hidden by default (a scan creates
+   dozens) but kept accessible through the sweep result table / history. */
+async function fillRunSelect(sel, { includePlaceholder = true, includeSweeps = false } = {}) {
   const { runs } = await get("/api/runs");
+  const visible = includeSweeps ? runs : runs.filter((r) => r.tags?.kind !== "sweep");
   sel.innerHTML = (includePlaceholder ? '<option value="">— 选择运行 —</option>' : "") +
-    runs.map((r) => `<option value="${esc(r.id)}">${esc(r.name)} · 第${r.current_step}步</option>`).join("");
-  return runs;
+    visible.map((r) => `<option value="${esc(r.id)}">${esc(r.name)} · 第${r.current_step}步</option>`).join("");
+  return visible;
 }
 
 function showNotice(el, html, kind = "") {

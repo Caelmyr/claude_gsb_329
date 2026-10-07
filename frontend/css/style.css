@@ -228,3 +228,33 @@ td.num, th.num { text-align: right; font-family: var(--mono); }
 
 /* timeline slider */
 .timeline { width: 100%; margin: 12px 0; accent-color: var(--accent); }
+
+/* sensitivity analysis: progress bars + result tables */
+.progress {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width 0.3s ease;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.data-table th, .data-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.data-table th { color: var(--muted); font-weight: 500; }
+.data-table tr.row-failed td { color: var(--red); }
+.data-table tr.row-running td { color: var(--accent-2); font-style: italic; }
+.data-table .num { font-family: var(--mono); text-align: right; }

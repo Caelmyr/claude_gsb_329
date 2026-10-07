@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>参数敏感性分析 · 复杂系统模拟仿真平台</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <nav class="topnav" id="topnav"></nav>
+  <main class="container">
+    <h1 class="page-title">参数敏感性分析</h1>
+    <p class="page-sub">对关键参数在取值区间内自动扫描，逐组完整运行并汇总成敏感性曲线；两个参数生成热力图，三个及以上做逐参数扫描（OAT）并给出影响程度排名。个别取值失败不影响其余组，实际运行组数、提前结束步数与耗时逐组记录。</p>
+
+    <div class="card">
+      <h2>新建扫描</h2>
+      <div class="grid grid-2">
+        <div class="field"><label>分析名称</label><input id="swName" placeholder="例如：β/γ 对疫情峰值的敏感性"></div>
+        <div class="field"><label>基础场景</label><select id="swScene"></select></div>
+      </div>
+
+      <div class="grid grid-4">
+        <div class="field"><label>最大运行步数（每组）</label><input id="swSteps" type="number" value="200" min="1"></div>
+        <div class="field"><label>每组重复次数（随机平均）</label><input id="swReplicates" type="number" value="1" min="1" max="20"></div>
+        <div class="field"><label>随机种子基准</label><input id="swSeed" type="number" value="0"></div>
+        <div class="field"><label>关键指标</label><select id="swMetric"></select></div>
+      </div>
+      <div class="grid grid-2">
+        <div class="field"><label>指标取值方式（每组运行的汇总）</label>
+          <select id="swAgg">
+            <option value="final">末值（运行结束时）</option>
+            <option value="mean">均值（整个过程平均）</option>
+            <option value="max">最大值（过程峰值）</option>
+            <option value="min">最小值（过程谷值）</option>
+          </select>
+        </div>
+        <div class="field"><label>提前结束（可选，不同取值可跑不同步数）</label>
+          <div class="row gap-6">
+            <select id="swStopMetric" style="max-width:180px"></select>
+            <select id="swStopOp" style="max-width:90px"><option value="below">连续低于</option><option value="above">连续高于</option></select>
+            <input id="swStopThreshold" type="number" step="any" placeholder="阈值" style="max-width:110px">
+            <input id="swStopPatience" type="number" value="20" min="1" placeholder="连续步数" style="max-width:110px" title="连续满足的步数">
+          </div>
+        </div>
+      </div>
+
+      <h3>扫描参数</h3>
+      <p class="muted small" style="margin-top:0">1 个参数 → 敏感性曲线；2 个参数 → 热力图（网格）；3 个及以上 → 以基线为中心逐参数扫描并排名。取值区间取模型允许范围。</p>
+      <div id="paramRows"></div>
+      <div class="row gap-6">
+        <button class="btn small" id="addParam">+ 添加扫描参数</button>
+        <button class="btn small" id="addParamValues">+ 自定义取值列表</button>
+      </div>
+
+      <div class="row between" style="margin-top:16px">
+        <div class="muted small" id="planInfo">选择场景后显示扫描方案。</div>
+        <div class="row gap-6">
+          <button class="btn primary" id="runSweep">开始扫描</button>
+          <button class="btn" id="cancelSweep" style="display:none">取消扫描</button>
+        </div>
+      </div>
+      <div id="progressWrap" style="display:none;margin-top:10px">
+        <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="muted small" id="progressText"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>已有扫描</h2>
+      <div id="sweepList"></div>
+    </div>
+
+    <div class="card" id="resultCard" style="display:none">
+      <div class="row between">
+        <h2 id="resultTitle" style="margin:0"></h2>
+        <div class="row gap-6" id="resultControls">
+          <label class="muted small" id="metricLabel">关键指标</label>
+          <select id="metricSel" style="width:220px"></select>
+          <select id="aggSel" style="width:120px">
+            <option value="final">末值</option>
+            <option value="mean">均值</option>
+            <option value="max">最大值</option>
+            <option value="min">最小值</option>
+          </select>
+          <select id="paramSel" style="width:180px;display:none"></select>
+        </div>
+      </div>
+      <div id="resultSummary" class="muted small" style="margin:8px 0"></div>
+      <div class="chart" id="sweepChart" style="min-height:420px"></div>
+      <h3>逐组明细（实际跑了多少组、哪些没跑成）</h3>
+      <div style="overflow-x:auto"><table class="data-table" id="pointsTable">
+        <thead><tr>
+          <th>#</th><th>参数取值</th><th>状态</th><th>实际步数</th><th>耗时(s)</th>
+          <th id="thMetric">指标值</th><th>运行</th><th>说明</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </main>
+
+  <script src="/vendor/echarts.min.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/common.js"></script>
+  <script src="/js/sensitivity.js"></script>
+</body>
+</html>

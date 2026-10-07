@@ -14,7 +14,7 @@ from typing import Any, Dict
 
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
-from . import catalog, export, models, report, storage, util
+from . import catalog, export, models, report, sensitivity, storage, util
 from .run_manager import manager
 
 FRONTEND_DIR = os.path.join(
@@ -168,7 +168,8 @@ def create_app() -> Flask:
 
         def worker():
             try:
-                manager.run_batch(run_id, steps, interval, keep_engine=True)
+                manager.run_batch(run_id, steps, interval, keep_engine=True,
+                                  stop_rule=data.get("stop_rule"))
             except Exception:  # noqa: BLE001
                 pass
 
@@ -176,7 +177,9 @@ def create_app() -> Flask:
             threading.Thread(target=worker, daemon=True).start()
             return jsonify({"started": True, "steps": steps})
         try:
-            result = manager.run_batch(run_id, steps, interval, keep_engine=True)
+            result = manager.run_batch(run_id, steps, interval,
+                                       keep_engine=True,
+                                       stop_rule=data.get("stop_rule"))
             return jsonify(result)
         except KeyError as exc:
             return _err(exc, 404)
@@ -307,6 +310,65 @@ def create_app() -> Flask:
         return jsonify({"deleted": exp_id})
 
     # ------------------------------------------------------------------ #
+    # Parameter sensitivity analysis (parameter sweeps)
+    # ------------------------------------------------------------------ #
+    @app.route("/api/sweeps", methods=["GET"])
+    def list_sweeps():
+        return jsonify({"sweeps": [sensitivity.summarize(s)
+                                   for s in storage.list_sweeps()]})
+
+    @app.route("/api/sweeps/preview", methods=["POST"])
+    def preview_sweep():
+        """Return the scan plan (type, per-param values, total groups) without
+        running anything, so the UI can show the group count up front."""
+        data = _json()
+        scene = storage.load_scene(data.get("scene_id", ""))
+        if scene is None:
+            return _err(KeyError(f"scene not found: {data.get('scene_id')}"), 404)
+        try:
+            replicates = max(1, int(data.get("replicates", 1)))
+            plan = sensitivity.build_plan(scene, list(data.get("params") or []))
+        except ValueError as exc:
+            return _err(exc, 400)
+        out = {k: v for k, v in plan.items() if k != "points"}
+        out["points"] = [p["param_values"] for p in plan["points"]]
+        out["replicates"] = replicates
+        out["runs_total"] = plan["total"] * replicates
+        return jsonify(out)
+
+    @app.route("/api/sweeps", methods=["POST"])
+    def create_sweep():
+        try:
+            sweep = sensitivity.sweep_runner.create_sweep(_json())
+        except KeyError as exc:
+            return _err(exc, 404)
+        except ValueError as exc:
+            return _err(exc, 400)
+        sensitivity.sweep_runner.start(sweep["id"])
+        return jsonify(sweep), 201
+
+    @app.route("/api/sweeps/<sweep_id>", methods=["GET"])
+    def get_sweep(sweep_id: str):
+        sweep = storage.load_sweep(sweep_id)
+        if sweep is None:
+            return _err(KeyError(f"sweep not found: {sweep_id}"), 404)
+        return jsonify(sweep)
+
+    @app.route("/api/sweeps/<sweep_id>/cancel", methods=["POST"])
+    def cancel_sweep(sweep_id: str):
+        if storage.load_sweep(sweep_id) is None:
+            return _err(KeyError(f"sweep not found: {sweep_id}"), 404)
+        sensitivity.sweep_runner.cancel(sweep_id)
+        return jsonify({"cancelling": True})
+
+    @app.route("/api/sweeps/<sweep_id>", methods=["DELETE"])
+    def delete_sweep(sweep_id: str):
+        sensitivity.sweep_runner.cancel(sweep_id)
+        if not storage.delete_sweep(sweep_id):
+            return _err(KeyError(f"sweep not found: {sweep_id}"), 404)
+        return jsonify({"deleted": sweep_id})
+
+    # ------------------------------------------------------------------ #
     # Reports
     # ------------------------------------------------------------------ #
     @app.route("/api/reports/<run_id>", methods=["GET"])
@@ -352,6 +414,8 @@ def create_app() -> Flask:
             "scenes": storage.list_scenes(),
             "runs": storage.list_runs(),
             "experiments": storage.list_experiments(),
+            "sweeps": [sensitivity.summarize(s)
+                       for s in storage.list_sweeps()],
         })
 
     return app

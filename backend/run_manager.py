@@ -51,7 +51,8 @@ class RunManager:
     # ------------------------------------------------------------------ #
     def create_run(self, scene: models.Scene, name: Optional[str] = None,
                    seed: Optional[int] = None,
-                   snapshot_interval: int = 1) -> Dict[str, Any]:
+                   snapshot_interval: int = 1,
+                   tags: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         config = models.resolve_config(scene)
         if seed is None:
             seed = int(config.get("seed", 0))
@@ -73,6 +74,7 @@ class RunManager:
             "current_step": 0,
             "total_steps": 0,
             "seed": seed,
+            "tags": dict(tags or {}),
             "created_at": now,
             "updated_at": now,
         }
@@ -128,14 +130,46 @@ class RunManager:
             return {"step": engine.step_count, "stats": engine.stats(),
                     "snapshot": engine.snapshot()}
 
+    @staticmethod
+    def _check_stop(rule: Optional[Dict[str, Any]],
+                    stats: Dict[str, Any], consecutive: Dict[str, int]) -> str:
+        """Return a non-empty reason when an early-stop rule fires, else ``""``.
+
+        Supported rules (``rule`` is ``{"metric", "op", "threshold",
+        "patience"}``): stop once ``metric`` has stayed below/above the
+        threshold for ``patience`` consecutive steps.  This lets a sweep end
+        each parameter value as soon as its dynamics settle instead of forcing
+        every value through the same (often wasteful) step budget.
+        """
+        if not rule:
+            return ""
+        metric = rule.get("metric")
+        if metric not in stats or not isinstance(stats[metric], (int, float)):
+            return ""
+        op = rule.get("op", "below")
+        threshold = float(rule.get("threshold", 0.0))
+        value = float(stats[metric])
+        holds = value < threshold if op == "below" else value > threshold
+        streak = consecutive.get(metric, 0) + 1 if holds else 0
+        consecutive[metric] = streak
+        patience = max(1, int(rule.get("patience", 1)))
+        if streak >= patience:
+            cmp = "<" if op == "below" else ">"
+            return (f"指标 {metric} 连续 {patience} 步 {cmp} {threshold:g}，"
+                    f"提前结束")
+        return ""
+
     def run_batch(self, run_id: str, steps: int,
                   snapshot_interval: Optional[int] = None,
-                  keep_engine: bool = True) -> Dict[str, Any]:
+                  keep_engine: bool = True,
+                  stop_rule: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Run ``steps`` steps to completion, returning final stats.
 
         Series rows are accumulated in memory and flushed periodically (and at
         the end) so the per-step write cost stays O(1) amortised even for very
-        long runs.
+        long runs.  ``stop_rule`` optionally ends the run early once an
+        aggregate metric settles; the returned dict reports the reason and the
+        number of steps actually simulated.
         """
         with self._lock_for(run_id):
             engine, meta = self._require(run_id)
@@ -148,21 +182,33 @@ class RunManager:
 
             series = storage.load_series(run_id)
             self._abort.discard(run_id)
+            stop_reason = ""
+            ran = 0
+            consecutive: Dict[str, int] = {}
             for _ in range(int(steps)):
                 if run_id in self._abort:
                     break
                 self._apply_due(run_id, engine, meta, engine.step_count)
                 engine.step()
+                ran += 1
                 meta["current_step"] = engine.step_count
-                series.append({"step": engine.step_count, **engine.stats()})
+                cur_stats = engine.stats()
+                series.append({"step": engine.step_count, **cur_stats})
                 if engine.step_count % meta["snapshot_interval"] == 0:
                     storage.save_step(run_id, engine.step_count, engine.snapshot())
                 if engine.step_count % 50 == 0:
                     storage.save_series(run_id, series)
                     meta["updated_at"] = util.now_iso()
                     storage.save_run_meta(meta)
+                stop_reason = self._check_stop(stop_rule, cur_stats, consecutive)
+                if stop_reason:
+                    break
 
-            meta["status"] = "stopped" if run_id in self._abort else "finished"
+            aborted = run_id in self._abort
+            if stop_reason:
+                meta["status"] = "finished"
+            else:
+                meta["status"] = "stopped" if aborted else "finished"
             meta["updated_at"] = util.now_iso()
             storage.save_series(run_id, series)
             storage.save_run_meta(meta)
@@ -173,7 +219,11 @@ class RunManager:
                 with self._lock:
                     self._engines.pop(run_id, None)
             return {"step": engine.step_count, "stats": engine.stats(),
-                    "snapshot": final}
+                    "snapshot": final,
+                    "requested_steps": int(steps),
+                    "ran_steps": ran,
+                    "early_stopped": bool(stop_reason),
+                    "stop_reason": stop_reason}
 
     # ------------------------------------------------------------------ #
     # Control
